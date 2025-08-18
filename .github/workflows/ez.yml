@@ -27,7 +27,7 @@ jobs:
       - name: Install prerequisites
         run: |
           sudo apt update
-          sudo apt install -y curl unzip sudo net-tools neofetch tmate
+          sudo apt install -y curl unzip sudo net-tools neofetch
 
       - name: Install Tailscale official script
         run: |
@@ -64,28 +64,32 @@ jobs:
             echo "HTNodes ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/HTNodes
           fi
 
-      - name: Start tmate + SSHX session as HTNodes
+      - name: Start SSHX session as HTNodes
         run: |
           sudo -u HTNodes -H bash -c '
             cd /home/HTNodes
-            echo "🔑 Starting tmate session..."
-            tmate -S /tmp/tmate.sock new-session -d
-            tmate -S /tmp/tmate.sock wait tmate-ready
-            TMATE_SSH=$(tmate -S /tmp/tmate.sock display -p "#{tmate_ssh}")
-            TMATE_WEB=$(tmate -S /tmp/tmate.sock display -p "#{tmate_web}")
             echo "💻 Connect via Termius/SSH client:"
-            echo "$TMATE_SSH"
-            echo "🌐 Or connect in browser:"
-            echo "$TMATE_WEB"
 
+            echo ""
+            echo "📡 Fetching Tailscale IP..."
+            TS_IP=$(tailscale ip -4 2>/dev/null | head -n 1)
+            if [ -n "$TS_IP" ]; then
+              echo "🔑 Tailscale IP: $TS_IP"
+              echo "👉 Connect with: ssh HTNodes@$TS_IP"
+            echo "👤 Username: HTNodes"
+            echo "🔑 Password: HTNodes"
+            else
+              echo "⚠️ No Tailscale IP found. Maybe Tailscale isn’t fully connected."
+            fi
+
+            echo ""
             echo "⚡ Starting SSHX session..."
             curl -sSf https://sshx.io/get | sh -s run
           '
 
-      - name: Backup VPS data and tailscale state
+      - name: Backup VPS data
         run: |
           sudo mkdir -p /opt/vps-backup/data
-          sudo cp /var/lib/tailscale/tailscaled.state /opt/vps-backup/data/
           sudo chown -R $USER:$USER /opt/vps-backup
           zip -r backup.zip /opt/vps-backup
 
