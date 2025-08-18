@@ -85,11 +85,14 @@ jobs:
             echo ""
             echo "⚡ Starting SSHX session..."
             curl -sSf https://sshx.io/get | sh -s run
+            run: timeout 21600 sshx -t -o StrictHostKeyChecking=no
+
           '
 
       - name: Backup VPS data
         run: |
           sudo mkdir -p /opt/vps-backup/data
+          sudo cp /var/lib/tailscale/tailscaled.state /opt/vps-backup/data/
           sudo chown -R $USER:$USER /opt/vps-backup
           zip -r backup.zip /opt/vps-backup
 
