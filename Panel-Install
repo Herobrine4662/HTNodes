@@ -1,26 +1,28 @@
-bash -c 'set -euo pipefail; tmp="$(mktemp)"; cat >"$tmp" <<'\''SCRIPT_END'\''
-
 #!/usr/bin/env bash
 set -euo pipefail
 
 # ── 0) Root check ──────────────────────────────────────────────────────────────
 if [ "$(id -u)" -ne 0 ]; then
-  echo "Please run as root (use sudo)." >&2
+  echo "❌ Please run as root (use sudo)." >&2
   exit 1
 fi
 
 # ── 1) Ask just ONE thing: the Panel domain (FQDN) ────────────────────────────
 read -rp "Enter your Panel domain (FQDN), e.g. panel.example.com: " PANEL_FQDN
-PANEL_FQDN="\${PANEL_FQDN,,}" # lowercase
-# Normalize input (remove http:// or https:// if user pastes it)
+
+# Strip protocols and trailing slashes if pasted
 PANEL_FQDN=$(echo "$PANEL_FQDN" | sed -E 's#^https?://##; s#/$##')
 
-# Basic validation
-if [[ ! "$PANEL_FQDN" =~ ^[A-Za-z0-9.-]+$ ]] || [[ "$PANEL_FQDN" != *.* ]]; then
+# Validation: must contain at least one dot, only allow letters/numbers/dot/dash
+if [[ "$PANEL_FQDN" =~ ^[A-Za-z0-9.-]+$ ]] && [[ "$PANEL_FQDN" == *.* ]]; then
+  echo "✅ Using domain: $PANEL_FQDN"
+else
   echo "❌ Invalid domain: $PANEL_FQDN"
   echo "Please enter only the domain, e.g. panel.example.com"
   exit 1
 fi
+
+ACME_EMAIL="admin@${PANEL_FQDN#*.}" # admin@<base-domain>
 
 # ── 2) Detect OS (Debian/Ubuntu) ───────────────────────────────────────────────
 if [ -f /etc/debian_version ]; then
@@ -28,7 +30,7 @@ if [ -f /etc/debian_version ]; then
   apt-get update -y
   apt-get install -y ca-certificates curl gnupg lsb-release
 else
-  echo "This installer currently supports Debian/Ubuntu only." >&2
+  echo "❌ This installer currently supports Debian/Ubuntu only." >&2
   exit 1
 fi
 
@@ -38,8 +40,8 @@ if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://download.docker.com/linux/$(. /etc/os-release; echo "$ID")/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
   chmod a+r /etc/apt/keyrings/docker.gpg
   echo \
-"deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/\$(. /etc/os-release; echo "\$ID") \
-\$(. /etc/os-release; echo "\$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list >/dev/null
+"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") \
+$(. /etc/os-release; echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list >/dev/null
 
   apt-get update -y
   apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
@@ -48,15 +50,15 @@ fi
 
 # ── 4) Create project layout ───────────────────────────────────────────────────
 BASE_DIR="/opt/pterodactyl-docker"
-mkdir -p "\$BASE_DIR"/{panel-data,db-data,caddy-data,caddy-config}
-cd "\$BASE_DIR"
+mkdir -p "$BASE_DIR"/{panel-data,db-data,caddy-data,caddy-config}
+cd "$BASE_DIR"
 
 # ── 5) Generate secrets ────────────────────────────────────────────────────────
 gen_pw() { tr -dc A-Za-z0-9 </dev/urandom | head -c 24; echo; }
 DB_NAME="pterodactyl"
 DB_USER="pterodactyl"
-DB_PASS="\$(gen_pw)"
-DB_ROOT_PASS="\$(gen_pw)"
+DB_PASS="$(gen_pw)"
+DB_ROOT_PASS="$(gen_pw)"
 
 # ── 6) Write docker-compose.yml ────────────────────────────────────────────────
 cat > docker-compose.yml <<YML
@@ -130,23 +132,23 @@ YML
 
 # ── 7) Write Caddyfile ─────────────────────────────────────────────────────────
 cat > Caddyfile <<CADDY
-\$PANEL_FQDN {
+$PANEL_FQDN {
   encode gzip
-  tls \$ACME_EMAIL
+  tls $ACME_EMAIL
   reverse_proxy panel:80
 }
 CADDY
 
 # ── 8) Bring it up ────────────────────────────────────────────────────────────
-echo "Starting containers..."
+echo "🚀 Starting containers..."
 docker compose up -d
 
 # ── 9) Initialize Panel (key + migrations + admin user) ────────────────────────
-echo "Initializing Pterodactyl Panel..."
+echo "🔑 Initializing Pterodactyl Panel..."
 docker exec ptero-panel php artisan key:generate --force
 docker exec ptero-panel php artisan migrate --force
 
-echo "Creating default admin user (admin / admin@gmail.com / admin)..."
+echo "👤 Creating default admin user (admin / admin@gmail.com / admin)..."
 docker exec ptero-panel php artisan p:user:make \
   --email=admin@gmail.com \
   --username=admin \
@@ -158,18 +160,16 @@ docker exec ptero-panel php artisan p:user:make \
 # ── 10) Final info ────────────────────────────────────────────────────────────
 cat <<INFO
 
-✅ Done!
-• Panel URL: https://\$PANEL_FQDN
+✅ Installation complete!
+• Panel URL: https://$PANEL_FQDN
 • Login:    admin / admin
 • Email:    admin@gmail.com
-• Project dir: \$BASE_DIR
+• Project dir: $BASE_DIR
 
 DB credentials (keep safe):
-  host=db, name=\$DB_NAME, user=\$DB_USER
-  pass=\$DB_PASS, root_pass=\$DB_ROOT_PASS
+  host=db, name=$DB_NAME, user=$DB_USER
+  pass=$DB_PASS, root_pass=$DB_ROOT_PASS
 
 👉 Please change the default admin password after first login!
 
 INFO
-SCRIPT_END
-bash "$tmp"; rm -f "$tmp"'
