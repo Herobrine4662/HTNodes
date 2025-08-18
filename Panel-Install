@@ -1,0 +1,171 @@
+bash -c 'set -euo pipefail; tmp="$(mktemp)"; cat >"$tmp" <<'\''SCRIPT_END'\''
+
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ── 0) Root check ──────────────────────────────────────────────────────────────
+if [ "$(id -u)" -ne 0 ]; then
+  echo "Please run as root (use sudo)." >&2
+  exit 1
+fi
+
+# ── 1) Ask just ONE thing: the Panel domain (FQDN) ────────────────────────────
+read -rp "Enter your Panel domain (FQDN), e.g. panel.example.com: " PANEL_FQDN
+PANEL_FQDN="\${PANEL_FQDN,,}" # lowercase
+if [[ -z "\$PANEL_FQDN" || "\$PANEL_FQDN" != *.* ]]; then
+  echo "Invalid domain. Please run again with something like: panel.example.com" >&2
+  exit 1
+fi
+ACME_EMAIL="admin@\${PANEL_FQDN#*.}" # admin@<base-domain>
+
+# ── 2) Detect OS (Debian/Ubuntu) ───────────────────────────────────────────────
+if [ -f /etc/debian_version ]; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -y
+  apt-get install -y ca-certificates curl gnupg lsb-release
+else
+  echo "This installer currently supports Debian/Ubuntu only." >&2
+  exit 1
+fi
+
+# ── 3) Install Docker Engine + Compose plugin ──────────────────────────────────
+if ! command -v docker >/dev/null 2>&1; then
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/$(. /etc/os-release; echo "$ID")/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  chmod a+r /etc/apt/keyrings/docker.gpg
+  echo \
+"deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/\$(. /etc/os-release; echo "\$ID") \
+\$(. /etc/os-release; echo "\$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list >/dev/null
+
+  apt-get update -y
+  apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  systemctl enable --now docker
+fi
+
+# ── 4) Create project layout ───────────────────────────────────────────────────
+BASE_DIR="/opt/pterodactyl-docker"
+mkdir -p "\$BASE_DIR"/{panel-data,db-data,caddy-data,caddy-config}
+cd "\$BASE_DIR"
+
+# ── 5) Generate secrets ────────────────────────────────────────────────────────
+gen_pw() { tr -dc A-Za-z0-9 </dev/urandom | head -c 24; echo; }
+DB_NAME="pterodactyl"
+DB_USER="pterodactyl"
+DB_PASS="\$(gen_pw)"
+DB_ROOT_PASS="\$(gen_pw)"
+
+# ── 6) Write docker-compose.yml ────────────────────────────────────────────────
+cat > docker-compose.yml <<YML
+version: "3.9"
+services:
+  db:
+    image: mariadb:10.11
+    container_name: ptero-db
+    environment:
+      - MYSQL_DATABASE=\${DB_NAME}
+      - MYSQL_USER=\${DB_USER}
+      - MYSQL_PASSWORD=\${DB_PASS}
+      - MYSQL_ROOT_PASSWORD=\${DB_ROOT_PASS}
+    volumes:
+      - ./db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: ptero-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    restart: unless-stopped
+
+  panel:
+    image: ghcr.io/pterodactyl/panel:latest
+    container_name: ptero-panel
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - APP_URL=https://\${PANEL_FQDN}
+      - APP_ENV=production
+      - APP_TIMEZONE=UTC
+      - TRUSTED_PROXIES=*
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_DATABASE=\${DB_NAME}
+      - DB_USERNAME=\${DB_USER}
+      - DB_PASSWORD=\${DB_PASS}
+      - CACHE_DRIVER=redis
+      - SESSION_DRIVER=redis
+      - QUEUE_CONNECTION=redis
+      - REDIS_HOST=redis
+    volumes:
+      - ./panel-data:/app/var
+    expose:
+      - "80"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: ptero-caddy
+    depends_on:
+      - panel
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy-data:/data
+      - ./caddy-config:/config
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    restart: unless-stopped
+YML
+
+# ── 7) Write Caddyfile ─────────────────────────────────────────────────────────
+cat > Caddyfile <<CADDY
+\$PANEL_FQDN {
+  encode gzip
+  tls \$ACME_EMAIL
+  reverse_proxy panel:80
+}
+CADDY
+
+# ── 8) Bring it up ────────────────────────────────────────────────────────────
+echo "Starting containers..."
+docker compose up -d
+
+# ── 9) Initialize Panel (key + migrations + admin user) ────────────────────────
+echo "Initializing Pterodactyl Panel..."
+docker exec ptero-panel php artisan key:generate --force
+docker exec ptero-panel php artisan migrate --force
+
+echo "Creating default admin user (admin / admin@gmail.com / admin)..."
+docker exec ptero-panel php artisan p:user:make \
+  --email=admin@gmail.com \
+  --username=admin \
+  --name="Administrator" \
+  --password=admin \
+  --admin=1 \
+  --no-interaction || true
+
+# ── 10) Final info ────────────────────────────────────────────────────────────
+cat <<INFO
+
+✅ Done!
+• Panel URL: https://\$PANEL_FQDN
+• Login:    admin / admin
+• Email:    admin@gmail.com
+• Project dir: \$BASE_DIR
+
+DB credentials (keep safe):
+  host=db, name=\$DB_NAME, user=\$DB_USER
+  pass=\$DB_PASS, root_pass=\$DB_ROOT_PASS
+
+👉 Please change the default admin password after first login!
+
+INFO
+SCRIPT_END
+bash "$tmp"; rm -f "$tmp"'
