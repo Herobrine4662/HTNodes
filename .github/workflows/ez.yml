@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  vps-session:
+  HTNodes:
     runs-on: ubuntu-latest
     timeout-minutes: 350  # Just under 6 hours
 
@@ -64,22 +64,23 @@ jobs:
             echo "HTNodes ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/HTNodes
           fi
 
-
-      - name: Start tmate session (for Termius/SSH)
+      - name: Start tmate + SSHX session as HTNodes
         run: |
-          echo "🔑 Starting tmate session..."
-          tmate -S /tmp/tmate.sock new-session -d
-          tmate -S /tmp/tmate.sock wait tmate-ready
-          TMATE_SSH=$(tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}')
-          TMATE_WEB=$(tmate -S /tmp/tmate.sock display -p '#{tmate_web}')
-          echo "💻 Connect via Termius/SSH client:"
-          echo "$TMATE_SSH"
-          echo "🌐 Or connect in browser:"
-          echo "$TMATE_WEB"
+          sudo -u HTNodes -H bash -c '
+            cd /home/HTNodes
+            echo "🔑 Starting tmate session..."
+            tmate -S /tmp/tmate.sock new-session -d
+            tmate -S /tmp/tmate.sock wait tmate-ready
+            TMATE_SSH=$(tmate -S /tmp/tmate.sock display -p "#{tmate_ssh}")
+            TMATE_WEB=$(tmate -S /tmp/tmate.sock display -p "#{tmate_web}")
+            echo "💻 Connect via Termius/SSH client:"
+            echo "$TMATE_SSH"
+            echo "🌐 Or connect in browser:"
+            echo "$TMATE_WEB"
 
-      - name: Start SSHX session as HTNodes
-        run: |
-          sudo -u HTNodes -H bash -c 'curl -sSf https://sshx.io/get | sh -s run'
+            echo "⚡ Starting SSHX session..."
+            curl -sSf https://sshx.io/get | sh -s run
+          '
 
       - name: Backup VPS data and tailscale state
         run: |
