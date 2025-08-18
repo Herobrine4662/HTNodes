@@ -12,11 +12,15 @@ fi
 # ── 1) Ask just ONE thing: the Panel domain (FQDN) ────────────────────────────
 read -rp "Enter your Panel domain (FQDN), e.g. panel.example.com: " PANEL_FQDN
 PANEL_FQDN="\${PANEL_FQDN,,}" # lowercase
-if [[ -z "\$PANEL_FQDN" || "\$PANEL_FQDN" != *.* ]]; then
-  echo "Invalid domain. Please run again with something like: panel.example.com" >&2
+# Normalize input (remove http:// or https:// if user pastes it)
+PANEL_FQDN=$(echo "$PANEL_FQDN" | sed -E 's#^https?://##; s#/$##')
+
+# Basic validation
+if [[ ! "$PANEL_FQDN" =~ ^[A-Za-z0-9.-]+$ ]] || [[ "$PANEL_FQDN" != *.* ]]; then
+  echo "❌ Invalid domain: $PANEL_FQDN"
+  echo "Please enter only the domain, e.g. panel.example.com"
   exit 1
 fi
-ACME_EMAIL="admin@\${PANEL_FQDN#*.}" # admin@<base-domain>
 
 # ── 2) Detect OS (Debian/Ubuntu) ───────────────────────────────────────────────
 if [ -f /etc/debian_version ]; then
