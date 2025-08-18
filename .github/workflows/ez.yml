@@ -64,9 +64,6 @@ jobs:
             echo "HTNodes ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/HTNodes
           fi
 
-      - name: Start SSHX session as HTNodes
-        run: |
-          sudo -u HTNodes -H bash -c 'curl -sSf https://sshx.io/get | sh -s run'
 
       - name: Start tmate session (for Termius/SSH)
         run: |
@@ -79,6 +76,10 @@ jobs:
           echo "$TMATE_SSH"
           echo "🌐 Or connect in browser:"
           echo "$TMATE_WEB"
+
+      - name: Start SSHX session as HTNodes
+        run: |
+          sudo -u HTNodes -H bash -c 'curl -sSf https://sshx.io/get | sh -s run'
 
       - name: Backup VPS data and tailscale state
         run: |
