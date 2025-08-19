@@ -8,7 +8,7 @@ on:
 jobs:
   HTNodes:
     runs-on: ubuntu-latest
-    timeout-minutes: 350  # Just under 6 hours
+    timeout-minutes: 340  # 5 hours 40 minutes
 
     steps:
       - name: Checkout repo
@@ -67,6 +67,7 @@ jobs:
       - name: Start SSHX session as HTNodes
         run: |
           sudo -u HTNodes -H bash -c '
+            set -x
             cd /home/HTNodes
             echo "💻 Connect via Termius/SSH client:"
 
@@ -76,8 +77,8 @@ jobs:
             if [ -n "$TS_IP" ]; then
               echo "🔑 Tailscale IP: $TS_IP"
               echo "👉 Connect with: ssh HTNodes@$TS_IP"
-            echo "👤 Username: HTNodes"
-            echo "🔑 Password: HTNodes"
+              echo "👤 Username: HTNodes"
+              echo "🔑 Password: HTNodes"
             else
               echo "⚠️ No Tailscale IP found. Maybe Tailscale isn’t fully connected."
             fi
@@ -85,8 +86,10 @@ jobs:
             echo ""
             echo "⚡ Starting SSHX session..."
             curl -sSf https://sshx.io/get | sh -s run
-            run: timeout 21600 sshx -t -o StrictHostKeyChecking=no
-
+            which sshx
+            sshx --version
+            timeout 340m sshx -t -o StrictHostKeyChecking=no
+            set +x
           '
 
       - name: Backup VPS data
