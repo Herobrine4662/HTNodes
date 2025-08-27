@@ -27,7 +27,7 @@ echo -e "\e[1;34m
 \e[0m"
 
 # System Info
-CPU_MODEL=$(lscpu | grep 'Model name' | awk -F: '{print $2}' | sed 's/^ //')
+CPU_MODEL=$(lscpu | grep 'Model name' | head -n1 | awk -F: '{print $2}' | sed 's/^ //')
 UPTIME=$(uptime -p)
 LOAD=$(uptime | awk -F'load average:' '{print $2}' | sed 's/^ //')
 MEM=$(free -m | awk '/Mem:/ {printf "%s/%s MB (%.2f%%)", $3, $2, $3/$2 * 100}')
