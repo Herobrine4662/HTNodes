@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Clear screen
+# Clear screen at the very top
 clear
 
 # Colors
@@ -17,6 +17,7 @@ add_banner_to_bashrc() {
         cat << 'EOF' >> ~/.bashrc
 
 # --- HTNodes Banner Start ---
+clear
 echo -e "\e[1;34m
 ██╗  ██╗████████╗███╗   ██╗ ██████╗ ██████╗ ███████╗███████╗
 ██║  ██║╚══██╔══╝████╗  ██║██╔═══██╗██╔══██╗██╔════╝██╔════╝
