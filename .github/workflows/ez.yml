@@ -8,7 +8,7 @@ on:
 jobs:
   HTNodes:
     runs-on: ubuntu-latest
-    timeout-minutes: 340  # 5 hours 40 minutes
+    timeout-minutes: 360  # 6 hours max
 
     steps:
       - name: Checkout repo
@@ -28,28 +28,37 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y curl unzip sudo net-tools neofetch
-      - name: Install Tailscale official script
+
+      - name: Install Tailscale
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
+
       - name: Restore backup files
         run: |
           if [ -f ./backup/backup.zip ]; then
+            echo "✅ Restoring backup files..."
             unzip -o ./backup/backup.zip -d /opt/vps-backup
           else
-            echo "No backup found, starting fresh"
+            echo "⚠ No backup found, starting fresh"
           fi
+
       - name: Restore Tailscale state
         run: |
           if [ -f /opt/vps-backup/data/tailscaled.state ]; then
+            echo "✅ Restoring Tailscale state..."
             sudo mkdir -p /var/lib/tailscale
             sudo cp /opt/vps-backup/data/tailscaled.state /var/lib/tailscale/tailscaled.state
             sudo chmod 600 /var/lib/tailscale/tailscaled.state
+          else
+            echo "⚠ No Tailscale state to restore"
           fi
+
       - name: Start Tailscale
         run: |
           sudo tailscaled &
           sleep 8
           sudo tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --hostname=HTNodes || echo "Tailscale already up"
+
       - name: Create user HTNodes with sudo
         run: |
           if ! id -u HTNodes >/dev/null 2>&1; then
@@ -58,53 +67,49 @@ jobs:
             sudo usermod -aG sudo HTNodes
             echo "HTNodes ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/HTNodes
           fi
-      - name: Start SSHX session as HTNodes
+
+      - name: Start SSHX session and keep alive
         run: |
-          sudo -u HTNodes -H bash -c '
-            set -x
-            cd /home/HTNodes
-            echo "💻 Connect via Termius/SSH client:"
-            echo ""
-            echo "📡 Fetching Tailscale IP..."
-            TS_IP=$(tailscale ip -4 2>/dev/null | head -n 1)
-            if [ -n "$TS_IP" ]; then
-              echo "🔑 Tailscale IP: $TS_IP"
-              echo "👉 Connect with: ssh HTNodes@$TS_IP"
-              echo "👤 Username: HTNodes"
-              echo "🔑 Password: HTNodes"
+          set -x
+          echo "💻 Connect via SSHX or Tailscale:"
+          TS_IP=$(tailscale ip -4 2>/dev/null | head -n 1)
+          if [ -n "$TS_IP" ]; then
+            echo "🔑 Tailscale IP: $TS_IP"
+            echo "👉 ssh HTNodes@$TS_IP"
+            echo "Password: HTNodes"
+          else
+            echo "⚠ No Tailscale IP found."
+          fi
+
+          echo "✅ Starting SSHX..."
+          curl -sSf https://sshx.io/get | sh -s run &
+          SSHX_PID=$!
+
+          echo "✅ SSHX started. Keeping alive for 5h 40m..."
+          SECONDS_LEFT=$((340 * 60))
+          while [ $SECONDS_LEFT -gt 0 ]; do
+            if ps -p $SSHX_PID > /dev/null; then
+              echo "SSHX alive | Time left: $((SECONDS_LEFT / 60)) mins"
             else
-              echo "⚠️ No Tailscale IP found. Maybe Tailscale isn’t fully connected."
+              echo "⚠ SSHX exited early. Still waiting for backup..."
             fi
+            sleep 60
+            SECONDS_LEFT=$((SECONDS_LEFT - 60))
+          done
 
-            echo ""
-            echo "⚡ Starting SSHX session..."
-            curl -sSf https://sshx.io/get | sh -s run
-            which sshx
-            sshx --version
+          echo "⏰ Time is up! Killing SSHX if still running..."
+          kill $SSHX_PID || echo "SSHX already stopped."
+          wait $SSHX_PID || true
+          set +x
 
-            # Start sshx in background
-            sshx -t -o StrictHostKeyChecking=no &
-            SSHX_PID=$!
-
-            # Keep alive loop for 340 minutes
-            end=$((SECONDS + 340*60))
-            while [ $SECONDS -lt $end ]; do
-              if ! kill -0 $SSHX_PID 2>/dev/null; then
-                echo "❌ SSHX process exited."
-                break
-              fi
-              echo "💤 Still alive... $(date)"
-              sleep 60
-            done
-
-            set +x
-          '
       - name: Backup VPS data
         run: |
+          echo "✅ Backing up VPS data..."
           sudo mkdir -p /opt/vps-backup/data
           sudo cp /var/lib/tailscale/tailscaled.state /opt/vps-backup/data/
           sudo chown -R $USER:$USER /opt/vps-backup
           zip -r backup.zip /opt/vps-backup
+
       - name: Upload VPS backup artifact
         uses: actions/upload-artifact@v4
         with:
