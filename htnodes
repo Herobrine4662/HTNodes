@@ -52,3 +52,31 @@ EOF
 
 # Run the function
 add_banner_to_bashrc
+
+# Clear again before showing banner immediately
+clear
+
+# Display banner immediately
+CPU_MODEL=$(lscpu | grep 'Model name' | head -n1 | awk -F: '{print $2}' | sed 's/^ //')
+UPTIME=$(uptime -p)
+LOAD=$(uptime | awk -F'load average:' '{print $2}' | sed 's/^ //')
+MEM=$(free -m | awk '/Mem:/ {printf "%s/%s MB (%.2f%%)", $3, $2, $3/$2 * 100}')
+IP_ADDR=$(hostname -I | awk '{print $1}')
+DISK=$(df -h / | awk 'NR==2 {print $3 "/" $2 " (" $5 " used)"}')
+
+echo -e "\e[1;34m
+██╗  ██╗████████╗███╗   ██╗ ██████╗ ██████╗ ███████╗███████╗
+██║  ██║╚══██╔══╝████╗  ██║██╔═══██╗██╔══██╗██╔════╝██╔════╝
+███████║   ██║   ██╔██╗ ██║██║   ██║██║  ██║█████╗  ███████╗
+██╔══██║   ██║   ██║╚██╗██║██║   ██║██║  ██║██╔══╝  ╚════██║
+██║  ██║   ██║   ██║ ╚████║╚██████╔╝██████╔╝███████╗███████║
+╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═══╝ ╚═════╝ ╚═════╝ ╚══════╝╚══════╝
+\e[0m"
+
+echo -e "\e[1;32mWelcome to HTNodes VPS!\e[0m\n"
+echo -e "\e[1;36mCPU:   \e[0m$CPU_MODEL"
+echo -e "\e[1;36mRAM:   \e[0m$MEM"
+echo -e "\e[1;36mUptime:\e[0m $UPTIME"
+echo -e "\e[1;36mLoad:  \e[0m$LOAD"
+echo -e "\e[1;36mIP:    \e[0m$IP_ADDR"
+echo -e "\e[1;36mDisk:  \e[0m$DISK\n"
