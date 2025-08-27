@@ -1,0 +1,53 @@
+#!/bin/bash
+
+# Clear screen
+clear
+
+# Colors
+RED="\e[1;31m"
+GREEN="\e[1;32m"
+YELLOW="\e[1;33m"
+BLUE="\e[1;34m"
+CYAN="\e[1;36m"
+RESET="\e[0m"
+
+# Function to add banner + system info to .bashrc
+add_banner_to_bashrc() {
+    if ! grep -q "HTNodes Banner" ~/.bashrc; then
+        cat << 'EOF' >> ~/.bashrc
+
+# --- HTNodes Banner Start ---
+echo -e "\e[1;34m
+██╗  ██╗████████╗███╗   ██╗ ██████╗ ██████╗ ███████╗███████╗
+██║  ██║╚══██╔══╝████╗  ██║██╔═══██╗██╔══██╗██╔════╝██╔════╝
+███████║   ██║   ██╔██╗ ██║██║   ██║██║  ██║█████╗  ███████╗
+██╔══██║   ██║   ██║╚██╗██║██║   ██║██║  ██║██╔══╝  ╚════██║
+██║  ██║   ██║   ██║ ╚████║╚██████╔╝██████╔╝███████╗███████║
+╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═══╝ ╚═════╝ ╚═════╝ ╚══════╝╚══════╝
+\e[0m"
+
+# System Info
+CPU_MODEL=$(lscpu | grep 'Model name' | awk -F: '{print $2}' | sed 's/^ //')
+UPTIME=$(uptime -p)
+LOAD=$(uptime | awk -F'load average:' '{print $2}' | sed 's/^ //')
+MEM=$(free -m | awk '/Mem:/ {printf "%s/%s MB (%.2f%%)", $3, $2, $3/$2 * 100}')
+IP_ADDR=$(hostname -I | awk '{print $1}')
+DISK=$(df -h / | awk 'NR==2 {print $3 "/" $2 " (" $5 " used)"}')
+
+echo -e "\e[1;32mWelcome to HTNodes VPS!\e[0m\n"
+echo -e "\e[1;36mCPU:   \e[0m$CPU_MODEL"
+echo -e "\e[1;36mRAM:   \e[0m$MEM"
+echo -e "\e[1;36mUptime:\e[0m $UPTIME"
+echo -e "\e[1;36mLoad:  \e[0m$LOAD"
+echo -e "\e[1;36mIP:    \e[0m$IP_ADDR"
+echo -e "\e[1;36mDisk:  \e[0m$DISK\n"
+# --- HTNodes Banner End ---
+EOF
+        echo -e "${GREEN}HTNodes banner added to ~/.bashrc${RESET}"
+    else
+        echo -e "${YELLOW}HTNodes banner already exists in ~/.bashrc${RESET}"
+    fi
+}
+
+# Run the function
+add_banner_to_bashrc
