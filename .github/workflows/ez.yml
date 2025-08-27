@@ -27,7 +27,7 @@ jobs:
       - name: Install prerequisites
         run: |
           sudo apt update
-          sudo apt install -y curl unzip sudo net-tools neofetch
+          sudo apt install -y curl unzip sudo net-tools neofetch pv pigz
 
       - name: Install Tailscale
         run: |
@@ -35,9 +35,10 @@ jobs:
 
       - name: Restore backup files
         run: |
-          if [ -f ./backup/backup.zip ]; then
+          if [ -f ./backup/backup.tar.gz ]; then
             echo "✅ Restoring backup files..."
-            unzip -o ./backup/backup.zip -d /opt/vps-backup
+            sudo mkdir -p /opt/vps-backup
+            tar -xzf ./backup/backup.tar.gz -C /
           else
             echo "⚠ No backup found, starting fresh"
           fi
@@ -86,7 +87,7 @@ jobs:
           SSHX_PID=$!
 
           echo "✅ SSHX started. Keeping alive for 5h 40m..."
-          SECONDS_LEFT=$((340 * 60))
+          SECONDS_LEFT=$((320 * 60))
           while [ $SECONDS_LEFT -gt 0 ]; do
             if ps -p $SSHX_PID > /dev/null; then
               echo "SSHX alive | Time left: $((SECONDS_LEFT / 60)) mins"
@@ -105,13 +106,33 @@ jobs:
       - name: Backup VPS data
         run: |
           echo "✅ Backing up VPS data..."
-          sudo mkdir -p /opt/vps-backup/data
-          sudo cp /var/lib/tailscale/tailscaled.state /opt/vps-backup/data/
-          sudo chown -R $USER:$USER /opt/vps-backup
-          zip -r backup.zip /opt/vps-backup
+          BACKUP_DIR="/opt/vps-backup"
+          sudo mkdir -p "$BACKUP_DIR/data"
+
+          echo "📂 Copying Tailscale state..."
+          if [ -f /var/lib/tailscale/tailscaled.state ]; then
+            sudo cp /var/lib/tailscale/tailscaled.state "$BACKUP_DIR/data/"
+          fi
+
+          echo "📂 Preparing directories to backup: /etc /var /home/HTNodes /opt"
+          TOTAL_SIZE=$(du -sb /etc /var /home/HTNodes /opt \
+            --exclude=/var/log \
+            --exclude=/var/cache \
+            --exclude=/var/lib/apt/lists \
+            --exclude=/var/lib/docker 2>/dev/null | awk '{sum+=$1} END {print sum}')
+          echo "📦 Total size after exclusions: $TOTAL_SIZE bytes"
+
+          echo "🔄 Creating compressed backup with progress bar..."
+          sudo tar --exclude='/var/log' \
+                   --exclude='/var/cache' \
+                   --exclude='/var/lib/apt/lists' \
+                   --exclude='/var/lib/docker' \
+                   -cf - /etc /var /home/HTNodes /opt | pv -s $TOTAL_SIZE | pigz -9 > backup.tar.gz
+
+          echo "✅ Backup complete!"
 
       - name: Upload VPS backup artifact
         uses: actions/upload-artifact@v4
         with:
           name: vps-backup
-          path: backup.zip
+          path: backup.tar.gz
