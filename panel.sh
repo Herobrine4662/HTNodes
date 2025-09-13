@@ -28,6 +28,10 @@ set -e
 #                                                                                    #
 ######################################################################################
 
+# Download and source lib.sh dynamically
+curl -s -o /tmp/lib.sh https://raw.githubusercontent.com/Herobrine4662/HTNodes/main/lib.sh
+source /tmp/lib.sh
+
 # Check if script is loaded, load if not or fail otherwise.
 fn_exists() { declare -F "$1" >/dev/null; }
 if ! fn_exists lib_loaded; then
