@@ -36,7 +36,7 @@ FQDN="cold-rabbit-94.telebit.io"
 # Default MySQL credentials
 MYSQL_DB="${MYSQL_DB:-panel}"
 MYSQL_USER="${MYSQL_USER:-pterodactyl}"
-MYSQL_PASSWORD="${MYSQL_PASSWORD:-$(gen_passwd 64)}"
+MYSQL_PASSWORD="admin123"
 
 # Environment
 timezone="Asia/Kolkata"
