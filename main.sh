@@ -7,8 +7,9 @@ while true; do
     echo "2) Install Tailscale"
     echo "3) Install Pterodactyl Panel"
     echo "4) Install Pterodactyl Wings"
-    echo "5) HTNodes Startup"
-    echo "6) Exit"
+    echo "5) Install SSL Certificates"
+    echo "6) HTNodes Startup"
+    echo "7) Exit"
     echo "====================================="
     read -p "Choose an option: " choice
 
@@ -26,9 +27,12 @@ while true; do
             bash <(curl -sSL https://raw.githubusercontent.com/Herobrine4662/HTNodes/main/wings.sh)
             ;;
         5)
-            bash <(curl -sSL https://raw.githubusercontent.com/Herobrine4662/HTNodes/main/start.sh)
+            bash <(curl -sSL https://raw.githubusercontent.com/Herobrine4662/HTNodes/main/ssl.sh)
             ;;
         6)
+            bash <(curl -sSL https://raw.githubusercontent.com/Herobrine4662/HTNodes/main/start.sh)
+            ;;
+        7)
             echo "Exiting..."
             exit 0
             ;;
